@@ -172,29 +172,25 @@ def student_doubts(roll_no):
 
 @app.delete("/api/doubts/<int:doubt_id>")
 def delete_doubt(doubt_id):
-    data = request.get_json(silent=True) or {}
-    roll_no = str(data.get("roll_no", "")).strip()
-
-    if not roll_no:
-        return jsonify({"ok": False, "error": "Roll number is required."}), 400
-
     conn = get_conn()
-    row = conn.execute(
-        "SELECT id FROM doubts WHERE id=? AND roll_no=?",
-        (doubt_id, roll_no)
-    ).fetchone()
 
-    if not row:
-        conn.close()
-        return jsonify({"ok": False, "error": "Doubt not found or not yours."}), 404
-
-    conn.execute(
-        "DELETE FROM doubts WHERE id=? AND roll_no=?",
-        (doubt_id, roll_no)
+    cur = conn.execute(
+        "DELETE FROM doubts WHERE id=?",
+        (doubt_id,)
     )
+
     conn.commit()
     conn.close()
-    return jsonify({"ok": True})
+
+    if cur.rowcount == 0:
+        return jsonify({
+            "ok": False,
+            "error": "Doubt not found."
+        }), 404
+
+    return jsonify({
+        "ok": True
+    })
 
 
 # Initialize the database when Flask is started by Gunicorn or directly.
