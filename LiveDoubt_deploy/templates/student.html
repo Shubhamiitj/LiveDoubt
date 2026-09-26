@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LiveDoubt — Student</title><link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="student-wrap">
+  <div class="brand">Live<span>Doubt</span></div>
+  <div class="student-card">
+    <div class="eyebrow">LIVE CLASS</div>
+    <h1>Ask your doubt</h1>
+    <p class="muted">Send your question silently from your seat. The professor can answer it live.</p>
+
+    <div class="class-box">
+      <div><span>Subject</span><strong id="subject">Loading...</strong></div>
+      <div><span>Current topic</span><strong id="topic">Loading...</strong></div>
+    </div>
+
+    <label>Roll Number</label>
+    <input id="roll" placeholder="e.g. B24ME001">
+    <label>Seat Number</label>
+    <input id="seat" placeholder="e.g. A-12">
+    <label>Your Doubt</label>
+    <textarea id="doubt" rows="5" placeholder="Type your question..."></textarea>
+    <button class="primary" onclick="sendDoubt()">Send Doubt</button>
+    <div id="msg"></div>
+  </div>
+
+  <div class="student-card history">
+    <div class="row-between"><h2>My doubts & answers</h2><button class="small" onclick="loadMyDoubts()">Refresh</button></div>
+    <div id="myDoubts"><div class="empty">Enter your roll number above to see your answers.</div></div>
+  </div>
+</div>
+<script>
+let lastRoll = "";
+async function loadSettings(){
+  const r=await fetch('/api/settings'); const d=await r.json();
+  subject.textContent=d.subject; topic.textContent=d.topic;
+}
+async function sendDoubt(){
+  const data={roll_no:roll.value,seat_no:seat.value,doubt:doubt.value};
+  const r=await fetch('/api/doubts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  const d=await r.json();
+  msg.className=d.ok?'success':'error'; msg.textContent=d.ok?'✓ Doubt sent to professor.':'✕ '+d.error;
+  if(d.ok){ lastRoll=roll.value.trim(); doubt.value=""; loadMyDoubts(); }
+}
+async function loadMyDoubts(){
+  const rno=roll.value.trim(); if(!rno) return;
+  lastRoll=rno;
+  const r=await fetch('/api/student/'+encodeURIComponent(rno)); const ds=await r.json();
+  myDoubts.innerHTML=ds.length?ds.map(x=>`
+    <div class="my-doubt">
+      <div class="row-between"><span class="pill ${x.priority==='high'?'red':''}">${x.priority==='high'?'HIGH PRIORITY':'SUBMITTED'}</span><small>${x.created_at.replace('T',' ')}</small></div>
+      <p><b>You:</b> ${esc(x.doubt)}</p>
+      ${x.answer?`<div class="answer"><b>Professor:</b> ${esc(x.answer)}</div>`:`<div class="waiting">Waiting for professor's answer...</div>`}
+      <div style="margin-top:12px;display:flex;justify-content:flex-end;">
+        <button class="small delete-btn" onclick="deleteDoubt(${x.id})">🗑 Delete</button>
+      </div>
+    </div>`).join(''):'<div class="empty">No doubts found for this roll number.</div>';
+}
+async function deleteDoubt(id){
+  const rno=roll.value.trim();
+  if(!rno) return;
+  if(!confirm('Delete this doubt?')) return;
+
+  const r=await fetch('/api/doubts/'+id,{
+    method:'DELETE',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({roll_no:rno})
+  });
+  const d=await r.json();
+
+  if(!d.ok){
+    msg.className='error';
+    msg.textContent='✕ '+(d.error || 'Could not delete doubt.');
+    return;
+  }
+
+  msg.className='success';
+  msg.textContent='✓ Doubt deleted.';
+  loadMyDoubts();
+}
+
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+loadSettings(); setInterval(loadSettings,3000); setInterval(()=>{if(lastRoll)loadMyDoubts()},2000);
+</script>
+</body></html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LiveDoubt — Professor</title><link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="prof-layout">
+<aside class="sidebar">
+  <div class="brand">Live<span>Doubt</span></div>
+  <div class="live-dot">● LIVE CLASS</div>
+  <nav><button class="nav active">Dashboard</button></nav>
+  <div class="side-note">Professor controls<br>Current class topic and doubt priority from here.</div>
+</aside>
+
+<main class="main">
+  <header class="topbar">
+    <div><div class="eyebrow">PROFESSOR DASHBOARD</div><h1>Live Class</h1></div>
+    <div class="class-status">● Classroom active</div>
+  </header>
+
+  <section class="control-card">
+    <div class="row-between"><div><h2>Live class settings</h2><p class="muted">Only the professor dashboard can edit these values.</p></div><button class="primary compact" onclick="saveSettings()">Update class</button></div>
+    <div class="settings-grid">
+      <div><label>Subject</label><input id="subjectInput" value=""></div>
+      <div><label>Current topic</label><input id="topicInput" value=""></div>
+    </div>
+    <div id="settingsMsg"></div>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><span>New</span><b id="newCount">0</b></div>
+    <div class="stat"><span>Answered</span><b id="answeredCount">0</b></div>
+    <div class="stat"><span>Resolved</span><b id="resolvedCount">0</b></div>
+    <div class="stat"><span>High priority</span><b id="highCount">0</b></div>
+  </section>
+
+  <section>
+    <div class="row-between section-title"><div><h2>Live doubts</h2><p class="muted">New doubts appear automatically. You can promote important doubts to high priority.</p></div><button class="small" onclick="loadDoubts()">Refresh</button></div>
+    <div id="doubts"></div>
+  </section>
+</main>
+<div id="toast" class="toast">New doubt received!</div>
+
+<div id="modal" class="modal hidden">
+ <div class="modal-box">
+   <div class="row-between"><h2>Doubt details</h2><button class="close" onclick="closeModal()">×</button></div>
+   <div id="modalContent"></div>
+   <label>Professor's answer</label>
+   <textarea id="answerBox" rows="5" placeholder="Type your answer for the student..."></textarea>
+   <div class="modal-actions">
+     <button class="secondary" onclick="closeModal()">Cancel</button>
+     <button class="primary" onclick="sendAnswer()">Send answer</button>
+   </div>
+ </div>
+</div>
+
+<script>
+let doubts=[]; let selectedId=null; let newestSeen=0;
+async function loadSettings(){
+ const r=await fetch('/api/settings'); const d=await r.json();
+ subjectInput.value=d.subject; topicInput.value=d.topic;
+}
+async function saveSettings(){
+ const data={subject:subjectInput.value.trim(),topic:topicInput.value.trim()};
+ const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+ const d=await r.json(); settingsMsg.className=d.ok?'success':'error'; settingsMsg.textContent=d.ok?'✓ Live class updated.':'✕ '+d.error;
+}
+async function loadDoubts(){
+ const r=await fetch('/api/doubts'); doubts=await r.json(); render();
+ if(doubts.length && newestSeen && doubts.some(x=>x.id>newestSeen)){
+   toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),2500);
+ }
+ if(doubts.length) newestSeen=Math.max(newestSeen,...doubts.map(x=>x.id));
+}
+function render(){
+ let n=0,a=0,rs=0,h=0; doubts.forEach(x=>{if(x.status==='new')n++;if(x.status==='answered')a++;if(x.status==='resolved')rs++;if(x.priority==='high')h++});
+ newCount.textContent=n;answeredCount.textContent=a;resolvedCount.textContent=rs;highCount.textContent=h;
+ if(!doubts.length){doubtsEl='<div class="empty">No doubts yet.</div>'; document.getElementById('doubts').innerHTML=doubtsEl;return}
+ document.getElementById('doubts').innerHTML=doubts.map(x=>`
+ <div class="doubt-card ${x.priority==='high'?'priority-high':''}">
+   <div class="doubt-head"><div><span class="pill ${x.priority==='high'?'red':''}">${x.priority==='high'?'HIGH PRIORITY':'NORMAL'}</span><span class="status">${x.status}</span></div><small>${x.created_at.replace('T',' ')}</small></div>
+   <div class="meta">Roll: <b>${esc(x.roll_no)}</b> &nbsp; Seat: <b>${esc(x.seat_no)}</b> &nbsp; Subject: <b>${esc(x.subject)}</b></div>
+   <p class="doubt-text">${esc(x.doubt)}</p>
+   ${x.answer?`<div class="prof-answer"><b>Your answer:</b> ${esc(x.answer)}</div>`:''}
+   <div class="card-actions">
+    <button class="secondary" onclick="openDoubt(${x.id})">Open & Answer</button>
+    <button class="secondary" onclick="togglePriority(${x.id},'${x.priority==='high'?'normal':'high'}')">${x.priority==='high'?'Remove priority':'Make high priority'}</button>
+    ${x.status!=='resolved'?`<button class="secondary" onclick="resolveDoubt(${x.id})">Mark resolved</button>`:''}
+   </div>
+ </div>`).join('');
+}
+async function togglePriority(id,p){
+ await fetch('/api/doubts/'+id+'/priority',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({priority:p})}); loadDoubts();
+}
+async function resolveDoubt(id){
+ await fetch('/api/doubts/'+id+'/resolve',{method:'POST'}); loadDoubts();
+}
+function openDoubt(id){
+ selectedId=id; const x=doubts.find(d=>d.id===id); if(!x)return;
+ modalContent.innerHTML=`<div class="detail-grid"><div><span>Roll number</span><b>${esc(x.roll_no)}</b></div><div><span>Seat</span><b>${esc(x.seat_no)}</b></div><div><span>Subject</span><b>${esc(x.subject)}</b></div><div><span>Status</span><b>${esc(x.status)}</b></div></div><div class="question"><b>Student's doubt</b><p>${esc(x.doubt)}</p></div>`;
+ answerBox.value=x.answer||''; modal.classList.remove('hidden');
+}
+function closeModal(){modal.classList.add('hidden');selectedId=null}
+async function sendAnswer(){
+ if(!selectedId)return;
+ const answer=answerBox.value.trim(); if(!answer)return;
+ const r=await fetch('/api/doubts/'+selectedId+'/answer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answer})});
+ const d=await r.json(); if(d.ok){closeModal();loadDoubts()}else alert(d.error||'Could not send answer');
+}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+const doubtsEl='';
+loadSettings(); loadDoubts(); setInterval(loadDoubts,1000); setInterval(loadSettings,3000);
+</script>
+</body></html>
